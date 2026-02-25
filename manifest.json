@@ -1,0 +1,17 @@
+{
+    "name": "ALX Estoque Fábrica",
+    "short_name": "ALX Estoque",
+    "description": "Sistema de Gestão de Estoque ALX Cabos",
+    "start_url": "sistema estoque.html",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#10b981",
+    "icons": [
+        {
+            "src": "https://cdn-icons-png.flaticon.com/512/2897/2897864.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}
