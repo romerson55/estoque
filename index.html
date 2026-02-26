@@ -1770,6 +1770,11 @@
 
                         localStorage.setItem('alx_historico', JSON.stringify(historicoMovimentacoes));
                         incrementarContador();
+
+                        // Notificação de mudança remota
+                        const emoji = diferenca > 0 ? '📥' : '📤';
+                        const corToast = diferenca > 0 ? 'emerald' : 'amber';
+                        mostrarToast(`${emoji} ${novo.DESCRICAO} | ${diferenca > 0 ? '+' : ''}${diferenca} ${getUnit(novo)}`, corToast);
                     }
                 });
             }
@@ -2489,7 +2494,8 @@
 
                 // 3. RENDERIZA ATIVOS
                 const container = document.getElementById('listaAlertas');
-                const badge = document.getElementById('alertBadge');
+                const containerModal = document.getElementById('listaAlertasModal'); // ADDED: Modal Container
+                const badge = document.getElementById('headerAlertBadge');
 
                 if (badge) {
                     badge.innerText = alertasAtivos.length;
@@ -2503,16 +2509,16 @@
                     }
                 }
 
-                if (container) {
+                if (container || containerModal) {
                     let html = alertasAtivos.map(item => `
                     <div class="flex items-center justify-between p-4 bg-slate-800 rounded-xl border-l-4 ${item.tipo === 'ZERADO' ? 'border-red-500 bg-red-900/10' : 'border-amber-500 bg-amber-900/10'} transition-all hover:scale-[1.01]">
                         <div>
-                            <p class="font-bold">${item.DESCRICAO}</p>
-                            <p class="text-xs text-slate-400">${item.CATEGORIA} - ${item.COR}</p>
+                            <p class="font-bold text-sm">${item.DESCRICAO}</p>
+                            <p class="text-[10px] text-slate-400">${item.CATEGORIA} - ${item.COR}</p>
                         </div>
                         <div class="text-right flex items-center gap-3">
-                            <span class="px-3 py-1 rounded text-xs font-bold ${item.tipo === 'ZERADO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}">
-                                ${item.tipo}: ${item.QUANTIDADE} ${getUnit(item)}
+                            <span class="px-2 py-1 rounded text-[10px] font-bold ${item.tipo === 'ZERADO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}">
+                                ${item.QUANTIDADE} ${getUnit(item)}
                             </span>
                             <button onclick="ignorarAlerta('${item.ID}')" title="Marcar como visto"
                                 class="w-8 h-8 rounded-full bg-slate-700 hover:bg-emerald-600 hover:text-white text-slate-400 flex items-center justify-center transition-all">
@@ -2523,24 +2529,24 @@
                 `).join('');
 
                     if (alertasAtivos.length === 0) {
-                        html = '<div class="text-center py-8 text-slate-500">Nenhum alerta pendente</div>';
+                        html = '<div class="text-center py-8 text-slate-500 text-sm italic">Nenhum alerta pendente</div>';
                     }
 
                     // 4. RENDERIZA OCULTOS (SE TIVER)
                     if (alertasOcultos.length > 0) {
                         html += `
                         <div class="mt-8 pt-6 border-t border-slate-700">
-                            <h4 class="font-bold text-slate-500 text-xs uppercase mb-4 flex items-center gap-2">
-                                <span>👁️‍🗨️</span> Itens Vistos / Monitorados (${alertasOcultos.length})
+                            <h4 class="font-bold text-slate-500 text-[10px] uppercase mb-4 flex items-center gap-2">
+                                <span>👁️‍🗨️</span> Itens Vistos (${alertasOcultos.length})
                             </h4>
                             <div class="space-y-2 opacity-60 hover:opacity-100 transition-opacity">
                                 ${alertasOcultos.map(item => `
                                     <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-xs font-bold ${item.tipo === 'ZERADO' ? 'text-red-500' : 'text-amber-500'}">${item.tipo}</span>
-                                            <span class="text-sm text-slate-400 line-through">${item.DESCRICAO}</span>
+                                        <div class="flex items-center gap-2 overflow-hidden">
+                                            <span class="text-[9px] font-bold ${item.tipo === 'ZERADO' ? 'text-red-500' : 'text-amber-500'}">${item.tipo}</span>
+                                            <span class="text-xs text-slate-400 truncate max-w-[120px]">${item.DESCRICAO}</span>
                                         </div>
-                                        <button onclick="restaurarAlerta('${item.ID}')" title="Restaurar Alerta" class="text-xs text-blue-400 hover:text-blue-300 font-bold">
+                                        <button onclick="restaurarAlerta('${item.ID}')" title="Restaurar Alerta" class="text-[10px] text-blue-400 hover:text-blue-300 font-bold">
                                             Restaurar
                                         </button>
                                     </div>
@@ -2550,7 +2556,8 @@
                     `;
                     }
 
-                    container.innerHTML = html;
+                    if (container) container.innerHTML = html;
+                    if (containerModal) containerModal.innerHTML = html;
                 }
             }
 
@@ -4749,7 +4756,3 @@
 </body>
 
 </html>
-<script type="remove-me">
-</body >
-
-</html >
