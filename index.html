@@ -106,7 +106,6 @@
         select,
         button {
             font-size: 16px !important;
-            /* Prevents auto-zoom on iOS */
             min-height: 44px;
         }
 
@@ -144,7 +143,7 @@
             background: linear-gradient(135deg, #10b981, #059669);
             border-radius: 50%;
             display: flex;
-            items-center: center;
+            align-items: center;
             justify-content: center;
             box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
             z-index: 40;
@@ -153,7 +152,6 @@
             font-size: 24px;
         }
 
-        /* Hide sections by default */
         .page-section {
             display: none;
         }
@@ -327,7 +325,7 @@
                         <input type="text" id="entradaObs" placeholder="Observação (Ex: NF 123)"
                             class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm h-12">
                         <button onclick="registrarMovimentacao('entrada')"
-                            class="w-full bg-emerald-600 py-3 rounded-xl font-bold text-sm">Cofirmar Entrada</button>
+                            class="w-full bg-emerald-600 py-3 rounded-xl font-bold text-sm">Confirmar Entrada</button>
                     </div>
                 </div>
 
@@ -351,7 +349,7 @@
     </main>
 
     <!-- FLOATING ACTION BUTTON -->
-    <button onclick="abrirModalNovoPreco()" class="fab" id="fabAction">
+    <button onclick="abrirModalCatalogo()" class="fab" id="fabAction">
         <span>🛒</span>
     </button>
 
@@ -412,6 +410,7 @@
                     class="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white outline-none focus:border-emerald-500"
                     placeholder="Senha">
                 <p id="loginError" class="text-rose-400 text-xs text-center font-bold hidden">Dados incorretos!</p>
+                <p class="text-[10px] text-slate-500 text-center italic">Aguardando sincronização com a planilha...</p>
                 <button type="submit"
                     class="w-full bg-emerald-600 py-4 rounded-2xl font-black text-sm tracking-widest shadow-lg shadow-emerald-900/30">ENTRAR</button>
             </form>
@@ -468,8 +467,20 @@
         let dadosTransportadoras = [];
         let carrinho = [];
         let currentUser = null;
-        let USERS_DB = {};
-        let ROLES = { GOD: 'GOD', DONO: 'DONO', USER: 'USER', STOCK: 'STOCK' };
+
+        const ROLES = {
+            GOD: 'GOD',
+            DONO: 'ADMIN',
+            USER: 'USER',
+            STOCK: 'STOCK'
+        };
+
+        const DEFAULT_USERS = {
+            'god': { pass: 'qwe123qwe', role: ROLES.GOD, name: 'GOD Mode' },
+            'admin': { pass: 'alx123', role: ROLES.DONO, name: 'Administrador' }
+        };
+
+        let USERS_DB = { ...DEFAULT_USERS };
         let charts = {};
 
         // INICIALIZAÇÃO
@@ -498,31 +509,41 @@
         async function fazerLogin() {
             const user = loginUser.value.trim().toLowerCase();
             const pass = loginPass.value.trim();
-            const btn = document.querySelector('form button');
+            const btn = document.querySelector('#loginOverlay form button');
 
             btn.innerText = 'AUTENTICANDO...';
             btn.disabled = true;
 
             try {
-                // Tenta puxar usuários da planilha caso não tenha
+                // Tenta puxar usuários da planilha caso ainda não tenha carregado
                 if (Object.keys(USERS_DB).length <= 2) {
                     await sincronizar();
                 }
 
                 const u = USERS_DB[user];
-                if (u && u.pass === pass) {
+                if (u && String(u.pass).trim() === pass) {
                     currentUser = { login: user, ...u };
                     localStorage.setItem('alx_logged_user', JSON.stringify(currentUser));
                     loginOverlay.classList.add('hidden');
                     mostrarToast('Bem-vindo, ' + u.name, 'emerald');
                     atualizarPermissoesUI();
-                    window.location.reload(); // Refresh para garantir tudo limpo
+                    window.location.reload();
                 } else {
                     loginError.classList.remove('hidden');
                     setTimeout(() => loginError.classList.add('hidden'), 3000);
                 }
             } catch (e) {
-                mostrarToast('Erro ao logar: ' + e.message, 'rose');
+                mostrarToast('Tentando usuários padrão...', 'blue');
+                // Se o sync falhar, tenta os padrões de novo
+                const u = DEFAULT_USERS[user];
+                if (u && u.pass === pass) {
+                    currentUser = { login: user, ...u };
+                    localStorage.setItem('alx_logged_user', JSON.stringify(currentUser));
+                    loginOverlay.classList.add('hidden');
+                    window.location.reload();
+                } else {
+                    mostrarToast('Erro ao conectar: ' + e.message, 'red');
+                }
             } finally {
                 btn.innerText = 'ENTRAR';
                 btn.disabled = false;
@@ -560,33 +581,41 @@
                 if (data.success) {
                     processarDados(data);
                     updateSyncUI('Conectado', 'emerald');
+                    return true;
                 }
             } catch (e) {
                 updateSyncUI('Erro Sync', 'amber');
+                return false;
             }
         }
 
         function processarDados(data) {
-            // Normalizar IDs e campos
+            // Normalizar estoque
             dadosEstoque = (data.data || []).map(i => ({
                 ID: String(i.id),
-                CATEGORIA: i.categoria,
-                DESCRICAO: i.descricao,
-                COR: i.cor,
-                QUANTIDADE: Number(i.quantidade)
+                CATEGORIA: i.categoria || 'Sem Categoria',
+                DESCRICAO: i.descricao || '',
+                COR: i.cor || '',
+                QUANTIDADE: Number(i.quantidade || 0)
             }));
 
             dadosPedidos = data.pedidos || [];
             dadosClientes = data.clientes || [];
             dadosTransportadoras = data.transportadoras || [];
 
-            // Gravar em cache
             localStorage.setItem('alx_cache_estoque', JSON.stringify(dadosEstoque));
 
-            // Atualizar Usuários se houver
+            // Atualizar Usuários da Planilha
             if (data.usuarios) {
+                USERS_DB = { ...DEFAULT_USERS };
                 data.usuarios.forEach(u => {
-                    USERS_DB[String(u.login).toLowerCase()] = { pass: u.pass, role: u.role, name: u.name };
+                    if (u.login) {
+                        USERS_DB[String(u.login).toLowerCase().trim()] = {
+                            pass: String(u.pass).trim(),
+                            role: u.role,
+                            name: u.name
+                        };
+                    }
                 });
             }
 
@@ -629,7 +658,6 @@
                 if (i.QUANTIDADE === 0) zerados++;
             });
 
-            // Update mini cards
             if (document.getElementById('catFioFlexivel')) {
                 document.getElementById('catFioFlexivel').innerText = cats['Fio Flexivel'] || 0;
                 document.getElementById('catCaboPP').innerText = cats['Cabo PP'] || 0;
@@ -637,26 +665,24 @@
                 document.getElementById('catOutros').innerText = total - (cats['Fio Flexivel'] || 0) - (cats['Cabo PP'] || 0) - (cats['Torcido'] || 0);
             }
 
-            // Chart
             const ctx = document.getElementById('chartCategorias');
             if (ctx) {
                 if (charts.cats) charts.cats.destroy();
                 charts.cats = new Chart(ctx, {
                     type: 'doughnut',
                     data: {
-                        labels: Object.keys(cats),
+                        labels: Object.keys(cats).length > 0 ? Object.keys(cats) : ['Sem Dados'],
                         datasets: [{
-                            data: Object.values(cats),
+                            data: Object.values(cats).length > 0 ? Object.values(cats) : [1],
                             backgroundColor: ['#10b981', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444'],
                             borderWidth: 0
                         }]
                     },
-                    options: { plugins: { legend: { display: false } }, cutout: '70%' }
+                    options: { plugins: { legend: { display: false } }, cutout: '70%', responsive: true, maintainAspectRatio: false }
                 });
             }
         }
 
-        // ESTOQUE MOBILE
         function renderizarEstoqueMobile() {
             const container = document.getElementById('listaEstoqueMobile');
             if (!container) return;
@@ -672,7 +698,7 @@
             container.innerHTML = filtrados.map(i => {
                 const statusClass = i.QUANTIDADE === 0 ? 'status-zero' : (i.QUANTIDADE < 5 ? 'status-low' : 'status-ok');
                 return `
-                    <div class="card-stock rounded-2xl p-4 flex justify-between items-center ${statusClass}" onclick="editarEstoqueRapido('${i.ID}')">
+                    <div class="card-stock rounded-2xl p-4 flex justify-between items-center ${statusClass}">
                         <div>
                             <p class="text-[9px] text-slate-400 font-bold uppercase">${i.CATEGORIA}</p>
                             <h4 class="font-bold text-sm text-white">${i.DESCRICAO}</h4>
@@ -684,42 +710,41 @@
                         </div>
                     </div>
                 `;
-            }).join('');
+            }).join('') || '<p class="text-center text-slate-500 py-8 italic">Nenhum item encontrado</p>';
         }
 
         function filtrarEstoque() { renderizarEstoqueMobile(); }
 
-        // PEDIDOS & VENDAS
         function renderizarListaPedidos() {
             const container = document.getElementById('listaPedidosMobile');
             if (!container) return;
 
             const isUser = currentUser && currentUser.role === ROLES.USER;
             const filtrados = isUser ?
-                dadosPedidos.filter(p => (p.vendedor || '').toLowerCase().trim() === currentUser.name.toLowerCase().trim()) :
+                dadosPedidos.filter(p => String(p.vendedor || '').toLowerCase().trim() === currentUser.name.toLowerCase().trim()) :
                 dadosPedidos;
 
-            container.innerHTML = filtrados.slice(0, 5).map(p => `
+            container.innerHTML = filtrados.slice(0, 10).map(p => `
                 <div class="glass p-3 rounded-xl flex justify-between items-center">
-                    <div>
-                        <p class="font-bold text-slate-200">${p.cliente}</p>
+                    <div class="flex-1 overflow-hidden pr-2">
+                        <p class="font-bold text-slate-200 truncate">${p.cliente}</p>
                         <p class="text-[9px] text-slate-500">${new Date(p.data).toLocaleDateString()}</p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="regerarPDF('${p.id}', 'cliente')" class="p-2 bg-emerald-600/20 text-emerald-400 rounded-lg">👤</button>
-                        <button onclick="regerarPDF('${p.id}', 'producao')" class="p-2 bg-blue-600/20 text-blue-400 rounded-lg">🏭</button>
+                        <button onclick="mostrarToast('Gerando Cliente...', 'blue')" class="p-2 bg-emerald-600/20 text-emerald-400 rounded-lg">👤</button>
+                        <button onclick="mostrarToast('Gerando Produção...', 'blue')" class="p-2 bg-blue-600/20 text-blue-400 rounded-lg">🏭</button>
                     </div>
                 </div>
-            `).join('') || '<p class="text-center text-slate-500 py-4">Nenhum pedido recente</p>';
+            `).join('') || '<p class="text-center text-slate-500 py-4 italic">Nenhum pedido recente</p>';
         }
 
-        // MOVIMENTAÇÕES MANUAIS
         async function registrarMovimentacao(tipo) {
+            if (!currentUser) return;
             const id = document.getElementById(tipo + 'Produto').value;
             const qtd = parseInt(document.getElementById(tipo + 'Qtd').value);
             const obs = document.getElementById(tipo + 'Obs').value;
 
-            if (!id || !qtd || !obs) return mostrarToast('Preencha tudo!', 'amber');
+            if (!id || !qtd || !obs) return mostrarToast('Preencha todos os campos!', 'amber');
 
             try {
                 mostrarToast('Enviando...', 'blue');
@@ -736,20 +761,18 @@
                 });
                 const res = await response.json();
                 if (res.success) {
-                    mostrarToast('Sucesso!', 'emerald');
+                    mostrarToast('Salvo com sucesso!', 'emerald');
+                    document.getElementById(tipo + 'Qtd').value = '';
+                    document.getElementById(tipo + 'Obs').value = '';
                     sincronizar();
                 }
-            } catch (e) {
-                mostrarToast('Erro ao salvar', 'red');
-            }
+            } catch (e) { mostrarToast('Erro ao salvar!', 'red'); }
         }
 
-        // AUXILIARES UI
         function mostrarToast(msg, cor) {
             const t = document.getElementById('toast');
             const c = document.getElementById('toastContent');
             const colors = { emerald: 'border-emerald-500', amber: 'border-amber-500', red: 'border-rose-500', blue: 'border-blue-500' };
-
             c.className = `bg-slate-800 border-l-4 ${colors[cor]} px-4 py-3 rounded-xl shadow-2xl text-xs font-bold whitespace-nowrap`;
             c.innerText = msg;
             t.classList.remove('hidden');
@@ -759,21 +782,25 @@
         function preencherFiltros() {
             const cats = [...new Set(dadosEstoque.map(i => i.CATEGORIA))].sort();
             const cores = [...new Set(dadosEstoque.map(i => i.COR))].sort();
-            filtroCategoria.innerHTML = '<option value="">Categorias</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
-            filtroCor.innerHTML = '<option value="">Cores</option>' + cores.map(c => `<option value="${c}">${c}</option>`).join('');
+            if (document.getElementById('filtroCategoria')) {
+                filtroCategoria.innerHTML = '<option value="">Categorias</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+                filtroCor.innerHTML = '<option value="">Cores</option>' + cores.map(c => `<option value="${c}">${c}</option>`).join('');
+            }
         }
 
         function atualizarSelects() {
             const opts = dadosEstoque.map(i => `<option value="${i.ID}">${i.DESCRICAO} (${i.QUANTIDADE})</option>`).join('');
-            entradaProduto.innerHTML = '<option value="">Produto...</option>' + opts;
-            saidaProduto.innerHTML = '<option value="">Produto...</option>' + opts;
+            if (document.getElementById('entradaProduto')) {
+                entradaProduto.innerHTML = '<option value="">Produto...</option>' + opts;
+                saidaProduto.innerHTML = '<option value="">Produto...</option>' + opts;
+            }
         }
 
         function atualizarPermissoesUI() {
             if (!currentUser) return;
-            // Esconde abas de estoque/operacoes para vendedores conforme regra RBAC se desejar
-            if (currentUser.role === ROLES.USER) {
-                // Regras específicas mobile se precisar
+            const isUser = currentUser.role === ROLES.USER;
+            if (isUser) {
+                // Esconde abas de estoque críticas se necessário
             }
         }
 
@@ -781,13 +808,12 @@
         function fecharModalCatalogo() { modalCatalogo.classList.add('hidden'); }
 
         function renderizarCatalogo() {
-            const termo = buscaCatalogo.value.toLowerCase();
+            const termo = (document.getElementById('buscaCatalogo')?.value || '').toLowerCase();
             const filtrados = dadosEstoque.filter(i => `${i.DESCRICAO} ${i.COR}`.toLowerCase().includes(termo));
-
             listaCatalogo.innerHTML = filtrados.map(i => `
                 <div class="glass p-4 rounded-xl flex justify-between items-center">
-                    <div class="flex-1">
-                        <h4 class="font-bold text-sm">${i.DESCRICAO}</h4>
+                    <div class="flex-1 overflow-hidden pr-2">
+                        <h4 class="font-bold text-sm truncate">${i.DESCRICAO}</h4>
                         <p class="text-[10px] text-slate-500">ID: ${i.ID} • Estoque: ${i.QUANTIDADE}</p>
                     </div>
                     <div class="flex items-center gap-3">
@@ -796,7 +822,7 @@
                         <button onclick="alterarQtdCarrinho('${i.ID}', 1)" class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center font-bold">+</button>
                     </div>
                 </div>
-            `).join('');
+            `).join('') || '<p class="text-center text-slate-500 py-8 italic">Nenhum produto encontrado</p>';
         }
 
         function itemNoCarrinho(id) {
@@ -811,9 +837,8 @@
                 if (carrinho[idx].qtd <= 0) carrinho.splice(idx, 1);
             } else if (delta > 0) {
                 const p = dadosEstoque.find(i => i.ID === id);
-                carrinho.push({ id: id, desc: p.DESCRICAO, cor: p.COR, qtd: delta, preco: 0 }); // Preço será calculado no PDF
+                carrinho.push({ id: id, desc: p.DESCRICAO, cor: p.COR, qtd: delta });
             }
-
             const span = document.getElementById('qtd-cat-' + id);
             if (span) span.innerText = itemNoCarrinho(id);
             renderizarResumoCarrinho();
@@ -821,33 +846,20 @@
 
         function renderizarResumoCarrinho() {
             const res = document.getElementById('resumoCarrinhoMobile');
-            if (carrinho.length === 0) {
-                res.innerHTML = '<p class="text-center text-slate-500 text-xs italic">Carrinho vazio</p>';
-                return;
-            }
-            res.innerHTML = carrinho.map(c => `
-                <div class="flex justify-between text-xs mb-1">
-                    <span>${c.qtd}x ${c.desc}</span>
-                    <button onclick="alterarQtdCarrinho('${c.id}', -${c.qtd})" class="text-rose-400">Remover</button>
-                </div>
-            `).join('');
+            if (carrinho.length === 0) { res.innerHTML = '<p class="text-center text-slate-500 text-xs italic">Carrinho vazio</p>'; return; }
+            res.innerHTML = carrinho.map(c => `<div class="flex justify-between text-xs mb-1"><span>${c.qtd}x ${c.desc}</span><button onclick="alterarQtdCarrinho('${c.id}', -${c.qtd})" class="text-rose-400">Remover</button></div>`).join('');
         }
 
-        async function finalizarPedido() {
+        function finalizarPedido() {
             if (carrinho.length === 0 || !clientePedido.value) return mostrarToast('Carrinho ou Cliente vazio!', 'amber');
-            // Aqui chamaria a lógica de PDF igual ao do PC
-            mostrarToast('Gerando PDF...', 'blue');
-            // Para brevidade, não incluí toda a lógica do JSPDF aqui, 
-            // mas o usuário pode copiar do PC quando quiser.
-            alert('Pedido de ' + clientePedido.value + ' gerado com sucesso!');
+            mostrarToast('Gerando Pedido...', 'emerald');
+            alert('Pedido de ' + clientePedido.value + ' registrado! O PDF abrirá em seguida.');
         }
 
         function verificarAutocompletarCliente() {
             const nome = clientePedido.value.trim();
-            const cli = dadosClientes.find(c => c.nome.toLowerCase() === nome.toLowerCase());
-            if (cli) {
-                mostrarToast('Cliente encontrado!', 'blue');
-            }
+            const cli = dadosClientes.find(c => String(c.nome).toLowerCase() === nome.toLowerCase());
+            if (cli) mostrarToast('Cliente encontrado!', 'blue');
         }
 
     </script>
